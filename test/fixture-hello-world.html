@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hello, World!</title>
+    <style>
+        /* Fullscreen background with gradient */
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: linear-gradient(135deg, #1d2b64, #f8cdda);
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        /* Text container styling with advanced animations */
+        .containerWrapper {
+            position: relative;
+            display: inline-block;
+        }
+        .container {
+            font-size: calc(16px + 4vw);
+            color: #fff;
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+            animation: glow 2s infinite alternate, float 3s ease-in-out infinite;
+            position: relative;
+            z-index: 1;
+        }
+        /* Glow animation for text */
+        @keyframes glow {
+            from {
+                text-shadow:
+                    0 0 10px #fff,
+                    0 0 20px #fff,
+                    0 0 30px #ff00de,
+                    0 0 40px #ff00de,
+                    0 0 50px #ff00de,
+                    0 0 60px #ff00de,
+                    0 0 70px #ff00de;
+            }
+            to {
+                text-shadow:
+                    0 0 20px #fff,
+                    0 0 30px #ff4fa7,
+                    0 0 40px #ff4fa7,
+                    0 0 50px #ff4fa7,
+                    0 0 60px #ff4fa7,
+                    0 0 70px #ff4fa7,
+                    0 0 80px #ff4fa7;
+            }
+        }
+        /* Float animation for subtle vertical movement */
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+            100% { transform: translateY(0px); }
+        }
+        /* Advanced pseudo-element: animated border around text */
+        .container::before {
+            content: "";
+            position: absolute;
+            top: -10%;
+            left: -10%;
+            width: 120%;
+            height: 120%;
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            box-sizing: border-box;
+            animation: borderPulse 4s infinite;
+            z-index: -1;
+        }
+        @keyframes borderPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="containerWrapper">
+        <div class="container">Hello, World</div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,29 @@
+{
+    "name": "email-telegram-forwarder",
+    "version": "1.0.0",
+    "description": "Forwards emails from specific addresses to Telegram channel",
+    "module": "src/index.ts",
+    "type": "module",
+    "scripts": {
+        "start": "bun run src/index.ts",
+        "dev": "bun --watch run src/index.ts",
+        "type-check": "tsc --noEmit",
+        "lint": "eslint src/ --ext .ts"
+    },
+    "dependencies": {
+        "html-to-text": "^9.0.5",
+        "imap": "^0.8.19",
+        "node-telegram-bot-api": "^0.66.0",
+        "winston": "^3.17.0",
+        "zod": "^3.24.2"
+    },
+    "devDependencies": {
+        "@types/bun": "latest",
+        "@types/html-to-text": "^9.0.4",
+        "@types/imap": "^0.8.42",
+        "@types/node-telegram-bot-api": "^0.64.7"
+    },
+    "peerDependencies": {
+        "typescript": "^5.7.3"
+    }
+}
