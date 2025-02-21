@@ -1,9 +1,9 @@
 import { EventEmitter } from 'events';
 import Imap from 'imap';
-import logger from '../utils/logger.js';
-import config from '../config/config.js';
-import type { EmailData } from '../types';
-import { emailToText } from '../utils/emailCleaner.js';
+import logger from '../utils/logger.ts';
+import config from '../config/config.ts';
+import type { EmailData } from '../types/index.ts';
+import { emailToText } from '../utils/emailCleaner.ts';
 
 export declare interface EmailMonitor {
   on(event: 'newEmail', listener: (data: EmailData) => void): this;

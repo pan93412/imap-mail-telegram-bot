@@ -1,6 +1,6 @@
-import { EmailMonitor } from "./services/emailMonitor.js";
-import { TelegramService } from "./services/telegramService.js";
-import logger from "./utils/logger.js";
+import { EmailMonitor } from "./services/emailMonitor.ts";
+import { TelegramService } from "./services/telegramService.ts";
+import logger from "./utils/logger.ts";
 
 try {
   logger.info("Starting Email-Telegram Forwarder");

@@ -1,7 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
-import logger from "../utils/logger.js";
-import config from "../config/config.js";
-import type { EmailData } from "../types";
+import logger from "../utils/logger.ts";
+import config from "../config/config.ts";
+import type { EmailData } from "../types/index.ts";
 import { encode as encodeHTMLEntities } from 'html-entities';
 
 interface RateLimit {

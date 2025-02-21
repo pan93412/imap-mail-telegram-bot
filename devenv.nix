@@ -9,8 +9,8 @@
 
   # https://devenv.sh/languages/
   languages.javascript.enable = true;
-  languages.javascript.bun.enable = true;
-  
+  languages.javascript.pnpm.enable = true;
+
   # https://devenv.sh/processes/
   # processes.cargo-watch.exec = "cargo-watch";
 

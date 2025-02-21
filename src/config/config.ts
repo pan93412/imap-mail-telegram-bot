@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { AppConfig } from "../types";
+import type { AppConfig } from "../types/index.ts";
+import "dotenv/config";
 
 const configSchema = z.object({
   IMAP_HOST: z.string().min(1),
