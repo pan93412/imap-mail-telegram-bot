@@ -4,6 +4,7 @@
     "description": "Forwards emails from specific addresses to Telegram channel",
     "module": "src/index.ts",
     "type": "module",
+    "packageManager": "pnpm@10.4.1",
     "scripts": {
         "start": "node --experimental-strip-types src/index.ts",
         "dev": "node --experimental-strip-types --watch src/index.ts",
