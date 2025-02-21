@@ -11,9 +11,13 @@
         "lint": "eslint src/ --ext .ts"
     },
     "dependencies": {
+        "html-entities": "^2.5.2",
         "html-to-text": "^9.0.5",
         "imap": "^0.8.19",
         "node-telegram-bot-api": "^0.66.0",
+        "postal-mime": "^2.4.3",
+        "q-encoding": "^1.0.0",
+        "quoted-printable": "^1.0.1",
         "winston": "^3.17.0",
         "zod": "^3.24.2"
     },
@@ -21,7 +25,8 @@
         "@types/bun": "latest",
         "@types/html-to-text": "^9.0.4",
         "@types/imap": "^0.8.42",
-        "@types/node-telegram-bot-api": "^0.64.7"
+        "@types/node-telegram-bot-api": "^0.64.7",
+        "@types/quoted-printable": "^1.0.2"
     },
     "peerDependencies": {
         "typescript": "^5.7.3"

@@ -3,7 +3,7 @@ import Imap from 'imap';
 import logger from '../utils/logger.js';
 import config from '../config/config.js';
 import type { EmailData } from '../types';
-import { htmlToText } from 'html-to-text';
+import { emailToText } from '../utils/emailCleaner.js';
 
 export declare interface EmailMonitor {
   on(event: 'newEmail', listener: (data: EmailData) => void): this;
@@ -121,15 +121,13 @@ export class EmailMonitor extends EventEmitter {
     });
 
     msg.once('end', async () => {
-      logger.info('Processing message:', { headerInfo, textBuffer });
-
       try {
         const to = headerInfo.to?.[0] || '';
         if (!targetEmails.some(email => to.includes(email))) {
           return;
         }
 
-        const cleanedText = htmlToText(textBuffer);
+        const cleanedText = emailToText(textBuffer);
 
         const emailData: EmailData = {
           subject: headerInfo.subject?.[0] || 'No Subject',

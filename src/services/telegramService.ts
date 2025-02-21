@@ -2,6 +2,7 @@ import TelegramBot from "node-telegram-bot-api";
 import logger from "../utils/logger.js";
 import config from "../config/config.js";
 import type { EmailData } from "../types";
+import { encode as encodeHTMLEntities } from 'html-entities';
 
 interface RateLimit {
   requests: number;
@@ -39,23 +40,26 @@ export class TelegramService {
       await this.checkRateLimit();
 
       const formattedDate = emailData.date.toLocaleString();
+      const cleanedContent = encodeHTMLEntities(emailData.content);
 
       const message = `<b>${emailData.subject}</b>
 📩 ${emailData.recipient}
 (${formattedDate})
 
 <blockquote expandable>
-${emailData.content}
-</blockquote expandable>
+${cleanedContent}
+</blockquote>
 `
+
+      logger.info("Message sending to Telegram", {
+        subject: emailData.subject,
+        recipient: emailData.recipient,
+        message: cleanedContent,
+        channelId: config.telegram.channelId,
+      });
 
       await this.bot.sendMessage(config.telegram.channelId, message, {
         parse_mode: "HTML"
-      });
-
-      logger.info("Message sent to Telegram", {
-        subject: emailData.subject,
-        recipient: emailData.recipient,
       });
     } catch (err) {
       logger.error("Error sending message to Telegram:", err);
