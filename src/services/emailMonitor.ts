@@ -1,146 +1,153 @@
-import { EventEmitter } from 'events';
-import Imap from 'imap';
-import logger from '../utils/logger.ts';
-import config from '../config/config.ts';
-import type { EmailData } from '../types/index.ts';
-import { emailToText } from '../utils/emailCleaner.ts';
+import { EventEmitter } from "events";
+import { ImapFlow, type FetchMessageObject } from "imapflow";
+import config from "../config/config.ts";
+import type { EmailData } from "../types/index.ts";
+import { emailToText } from "../utils/emailCleaner.ts";
+import type { Readable } from "stream";
+import logger from "../utils/logger.ts";
 
 export declare interface EmailMonitor {
-  on(event: 'newEmail', listener: (data: EmailData) => void): this;
-  emit(event: 'newEmail', data: EmailData): boolean;
+  on(event: "newEmail", listener: (data: EmailData) => void): this;
+  emit(event: "newEmail", data: EmailData): boolean;
 }
 
 export class EmailMonitor extends EventEmitter {
-  private imap: Imap;
+  private imap: ImapFlow;
 
   constructor() {
     super();
-    this.imap = new Imap(config.imap);
-    this.setupEventHandlers();
+    this.imap = new ImapFlow({
+      host: config.imap.host,
+      port: config.imap.port,
+      secure: config.imap.tls,
+      tls: config.imap.tlsOptions,
+      auth: {
+        user: config.imap.user,
+        pass: config.imap.password,
+      },
+    });
+  }
+
+  public async connect(): Promise<void> {
+    try {
+      await this.imap.connect();
+      logger.info("IMAP connection established");
+      this.startMonitoring();
+    } catch (err) {
+      logger.error("IMAP connection error:", err);
+      this.reconnect();
+    }
   }
 
   end(): void {
-    this.imap.end();
+    this.imap.logout();
   }
 
-  private setupEventHandlers(): void {
-    this.imap.once('ready', () => {
-      logger.info('IMAP connection established');
-      this.startMonitoring();
-    });
-
-    this.imap.once('error', (err: Error) => {
-      logger.error('IMAP connection error:', err);
-      this.reconnect();
-    });
-
-    this.imap.once('end', () => {
-      logger.info('IMAP connection ended');
-      this.reconnect();
-    });
-  }
-
-  private reconnect(): void {
-    logger.info('Attempting to reconnect to IMAP server...');
+  private async reconnect(): Promise<void> {
+    logger.info("Attempting to reconnect to IMAP server...");
     setTimeout(() => {
       this.connect();
     }, 10000);
   }
 
-  public connect(): void {
-    try {
-      this.imap.connect();
-    } catch (err) {
-      logger.error('Failed to connect to IMAP:', err);
-      this.reconnect();
-    }
-  }
-
   private async startMonitoring(): Promise<void> {
-    try {
-      this.imap.openBox('INBOX', false, (err) => {
-        if (err) {
-          logger.error('Error opening inbox:', err);
-          return;
-        }
+    const lock = await this.imap.getMailboxLock("INBOX");
 
-        this.imap.on('mail', () => this.checkNewEmails());
-        this.checkNewEmails(); // Initial check
-      });
-    } catch (err) {
-      logger.error('Error in startMonitoring:', err);
+    const onNewEmail = (...args: unknown[]) => {
+      logger.child({ args }).info("New email event");
+      this.checkNewEmails();
+    };
+
+    try {
+      await this.checkNewEmails();  // first check
+
+      this.imap.on("exists", onNewEmail);
+
+      while (true) {
+        try {
+          await this.imap.idle();
+        } catch (err) {
+          logger.error("Error in idle: %s", err);
+        }
+      }
+    } finally {
+      this.imap.off("exists", onNewEmail);
+      lock.release();
     }
   }
 
   private async checkNewEmails(): Promise<void> {
     try {
       const targetEmails = config.monitoring.targetEmails;
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
 
-      this.imap.search(['UNSEEN', ['SINCE', yesterday]], (err, results) => {
-        if (err) {
-          logger.error('Error searching emails:', err);
-          return;
+      for await (const msg of this.imap.fetch(
+        { seen: false },
+        {
+          envelope: true,
+          bodyStructure: true,
         }
-
-        if (!results.length) return;
-
-        const fetch = this.imap.fetch(results, {
-          bodies: ['HEADER.FIELDS (FROM TO SUBJECT DATE)', 'TEXT'],
-          markSeen: true
-        });
-
-        fetch.on('message', (msg) => {
-          this.processMessage(msg, targetEmails);
-        });
-
-        fetch.once('error', (err) => {
-          logger.error('Fetch error:', err);
-        });
-      });
+      )) {
+        await this.processMessage(msg, targetEmails);
+      }
     } catch (err) {
-      logger.error('Error in checkNewEmails:', err);
+      logger.error("Error in checkNewEmails: %s", err);
     }
   }
 
-  private async processMessage(msg: Imap.ImapMessage, targetEmails: string[]): Promise<void> {
-    let headerInfo: Record<string, string[]> = {};
-    let textBuffer = '';
+  private async processMessage(
+    msg: FetchMessageObject,
+    targetEmails: string[]
+  ): Promise<void> {
+    try {
+      logger.child({
+        envelope: msg.envelope,
+        seq: msg.seq,
+        threadId: msg.threadId,
+      }).info("envelope");
 
-    msg.on('body', (stream, info) => {
-      if (info.which === 'TEXT') {
-        stream.on('data', (chunk: Buffer) => {
-          textBuffer += chunk.toString('utf8');
-        });
-      } else {
-        stream.on('data', (chunk: Buffer) => {
-          headerInfo = Imap.parseHeader(chunk.toString('utf8'));
-        });
+      const isTargetEmail = msg.envelope.to.some(
+        (email) => email.address && targetEmails.includes(email.address)
+      );
+      if (!isTargetEmail) {
+        logger.child({
+          envelope: msg.envelope,
+          seq: msg.seq,
+        }).info("Email is not for monitoring");
+        return;
       }
-    });
 
-    msg.once('end', async () => {
-      try {
-        const to = headerInfo.to?.[0] || '';
-        if (!targetEmails.some(email => to.includes(email))) {
-          return;
-        }
+      // mark this message as seen, so it won't be processed again
+      await this.imap.messageFlagsAdd(
+        {
+          threadId: msg.threadId,
+        },
+        ["\\Seen"]
+      );
 
-        const cleanedText = emailToText(textBuffer);
+      const { content } = await this.imap.download(msg.seq.toString());
+      const textStr = await this.readableToString(content);
 
-        const emailData: EmailData = {
-          subject: headerInfo.subject?.[0] || 'No Subject',
-          recipient: to,
-          date: new Date(headerInfo.date?.[0] || Date.now()),
-          content: cleanedText,
-        };
+      const cleanedText = emailToText(textStr);
 
-        this.emit('newEmail', emailData);
-        logger.info('New email processed', { subject: emailData.subject });
-      } catch (err) {
-        logger.error('Error processing message:', err);
-      }
-    });
+      const emailData: EmailData = {
+        subject: msg.envelope.subject,
+        recipient: msg.envelope.to[0].address ?? "",
+        date: msg.envelope.date,
+        content: cleanedText,
+      };
+
+      this.emit("newEmail", emailData);
+      logger.child({ emailData }).info("New email processed");
+    } catch (err) {
+      logger.error("Error processing message: %s", err);
+    }
+  }
+
+  private async readableToString(readable: Readable): Promise<string> {
+    const chunks = [];
+    for await (const chunk of readable) {
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks).toString();
   }
 }

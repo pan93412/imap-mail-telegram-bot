@@ -51,12 +51,12 @@ ${cleanedContent}
 </blockquote>
 `
 
-      logger.info("Message sending to Telegram", {
+      logger.child({
         subject: emailData.subject,
         recipient: emailData.recipient,
         message: cleanedContent,
         channelId: config.telegram.channelId,
-      });
+      }).info("Message sending to Telegram");
 
       await this.bot.sendMessage(config.telegram.channelId, message, {
         parse_mode: "HTML"

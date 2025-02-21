@@ -1,20 +1,5 @@
-import winston from 'winston';
+import { pino } from 'pino';
 
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.Console({
-      stderrLevels: ['error', 'warn', 'info', 'debug'],
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple()
-      )
-    })
-  ]
-});
+const logger = pino();
 
 export default logger;

@@ -15,15 +15,17 @@
         "html-entities": "^2.5.2",
         "html-to-text": "^9.0.5",
         "imap": "^0.8.19",
+        "imapflow": "^1.0.181",
         "node-telegram-bot-api": "^0.66.0",
+        "pino": "^9.6.0",
         "postal-mime": "^2.4.3",
         "quoted-printable": "^1.0.1",
-        "winston": "^3.17.0",
         "zod": "^3.24.2"
     },
     "devDependencies": {
         "@types/html-to-text": "^9.0.4",
         "@types/imap": "^0.8.42",
+        "@types/imapflow": "^1.0.19",
         "@types/node": "^22.13.4",
         "@types/node-telegram-bot-api": "^0.64.7",
         "@types/quoted-printable": "^1.0.2"
