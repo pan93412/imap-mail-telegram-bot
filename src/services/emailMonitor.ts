@@ -13,6 +13,7 @@ export declare interface EmailMonitor {
 
 export class EmailMonitor extends EventEmitter {
   private imap: ImapFlow;
+  private isMonitoring: boolean = false;
 
   constructor() {
     super();
@@ -25,6 +26,7 @@ export class EmailMonitor extends EventEmitter {
         user: config.imap.user,
         pass: config.imap.password,
       },
+      // logger: false, // Disable default logging
     });
   }
 
@@ -32,15 +34,16 @@ export class EmailMonitor extends EventEmitter {
     try {
       await this.imap.connect();
       logger.info("IMAP connection established");
-      this.startMonitoring();
+      await this.startMonitoring();
     } catch (err) {
       logger.error("IMAP connection error:", err);
       this.reconnect();
     }
   }
 
-  end(): void {
-    this.imap.logout();
+  public end(): void {
+    this.isMonitoring = false;
+    this.imap.close(); // Close instead of logout for immediate termination
   }
 
   private async reconnect(): Promise<void> {
@@ -51,46 +54,82 @@ export class EmailMonitor extends EventEmitter {
   }
 
   private async startMonitoring(): Promise<void> {
-    const lock = await this.imap.getMailboxLock("INBOX");
+    this.isMonitoring = true;
 
-    const onNewEmail = (...args: unknown[]) => {
-      logger.child({ args }).info("New email event");
-      this.checkNewEmails();
-    };
+    // Set up event handlers
+    this.imap.on("exists", (data) => {
+      logger.info(`New message notification: count=${data.count}, previous=${data.prevCount}`);
+      if (data.count > data.prevCount) {
+        this.checkNewEmails();
+      }
+    });
+
+    this.imap.on("error", (err) => {
+      logger.error("IMAP Error:", err);
+      if (this.isMonitoring) {
+        this.reconnect();
+      }
+    });
+
+    this.imap.on("close", () => {
+      logger.info("IMAP connection closed");
+      if (this.isMonitoring) {
+        this.reconnect();
+      }
+    });
 
     try {
-      await this.checkNewEmails();  // first check
+      // Open the mailbox first
+      const mailbox = await this.imap.mailboxOpen("INBOX");
+      logger.info(`Opened mailbox: ${mailbox.path} with ${mailbox.exists} messages`);
 
-      this.imap.on("exists", onNewEmail);
+      // Check for existing unseen emails first
+      await this.checkNewEmails();
 
-      while (true) {
+      // Start IDLE mode - this will wait for server notifications
+      while (this.isMonitoring) {
         try {
+          logger.info("Entering IDLE mode");
           await this.imap.idle();
+          logger.info("IDLE mode ended");
         } catch (err) {
-          logger.error("Error in idle: %s", err);
+          logger.error("Error in IDLE mode:", err);
+          // Wait a bit before retrying
+          await new Promise(resolve => setTimeout(resolve, 5000));
         }
       }
-    } finally {
-      this.imap.off("exists", onNewEmail);
-      lock.release();
+    } catch (err) {
+      logger.error("Error in monitoring:", err);
+      if (this.isMonitoring) {
+        this.reconnect();
+      }
     }
   }
 
   private async checkNewEmails(): Promise<void> {
-    try {
-      const targetEmails = config.monitoring.targetEmails;
+    logger.info("Checking for new emails");
 
-      for await (const msg of this.imap.fetch(
-        { seen: false },
-        {
+    try {
+      const lock = await this.imap.getMailboxLock("INBOX");
+
+      try {
+        const targetEmails = config.monitoring.targetEmails;
+        logger.info(`Looking for emails addressed to: ${targetEmails.join(", ")}`);
+
+        // Fetch all unseen messages
+        for await (const msg of this.imap.fetch({ seen: false }, {
+          uid: true,
           envelope: true,
           bodyStructure: true,
+          flags: true
+        })) {
+          await this.processMessage(msg, targetEmails);
         }
-      )) {
-        await this.processMessage(msg, targetEmails);
+      } finally {
+        lock.release();
       }
     } catch (err) {
-      logger.error("Error in checkNewEmails: %s", err);
+      logger.error("Error in checkNewEmails:", err);
     }
   }
 
@@ -99,47 +138,45 @@ export class EmailMonitor extends EventEmitter {
     targetEmails: string[]
   ): Promise<void> {
     try {
-      logger.child({
-        envelope: msg.envelope,
-        seq: msg.seq,
-        threadId: msg.threadId,
-      }).info("envelope");
+      const { envelope, uid } = msg;
+      logger.info(`Processing message: uid=${uid}, subject="${envelope.subject}"`);
 
-      const isTargetEmail = msg.envelope.to.some(
-        (email) => email.address && targetEmails.includes(email.address)
+      // Check recipients (both To and CC fields)
+      const allRecipients = [
+        ...(envelope.to || []),
+        ...(envelope.cc || [])
+      ];
+
+      const matchedEmail = allRecipients.find(
+        recipient => recipient.address && targetEmails.includes(recipient.address.toLowerCase())
       );
-      if (!isTargetEmail) {
-        logger.child({
-          envelope: msg.envelope,
-          seq: msg.seq,
-        }).info("Email is not for monitoring");
+
+      if (!matchedEmail) {
+        logger.info(`Message uid=${uid} is not addressed to monitored emails`);
         return;
       }
 
-      // mark this message as seen, so it won't be processed again
-      await this.imap.messageFlagsAdd(
-        {
-          threadId: msg.threadId,
-        },
-        ["\\Seen"]
-      );
+      logger.info(`Found targeted email to ${matchedEmail.address}`);
 
-      const { content } = await this.imap.download(msg.seq.toString());
+      // Download the full message
+      const { content } = await this.imap.download(uid.toString(), undefined, { uid: true });
       const textStr = await this.readableToString(content);
-
       const cleanedText = emailToText(textStr);
 
+      // Mark as seen after successfully processing
+      await this.imap.messageFlagsAdd(uid.toString(), ["\\Seen"], { uid: true });
+
       const emailData: EmailData = {
-        subject: msg.envelope.subject,
-        recipient: msg.envelope.to[0].address ?? "",
-        date: msg.envelope.date,
+        subject: envelope.subject || "(No Subject)",
+        recipient: matchedEmail.address || "",
+        date: envelope.date || new Date(),
         content: cleanedText,
       };
 
+      logger.info(`Emitting newEmail event for: "${emailData.subject}"`);
       this.emit("newEmail", emailData);
-      logger.child({ emailData }).info("New email processed");
     } catch (err) {
-      logger.error("Error processing message: %s", err);
+      logger.error(`Error processing message: ${err}`);
     }
   }
 
